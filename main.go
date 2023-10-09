@@ -24,6 +24,7 @@ func createJsonFile(dir string, file string) {
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(err)
 	}
+
 	f, err := os.Open(dir + file)
 	if err != nil {
 		log.Fatal(err)
@@ -31,6 +32,7 @@ func createJsonFile(dir string, file string) {
 
 	csvReader := csv.NewReader(f)
 	csvReader.FieldsPerRecord = -1
+
 	data, err := csvReader.ReadAll()
 	if err != nil {
 		log.Fatal(err)
@@ -66,6 +68,7 @@ func createSpotifyLinkFiles(dir string, file string) {
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(err)
 	}
+
 	f, err := os.Open(dir + file)
 	if err != nil {
 		log.Fatal(err)
@@ -73,10 +76,12 @@ func createSpotifyLinkFiles(dir string, file string) {
 
 	csvReader := csv.NewReader(f)
 	csvReader.FieldsPerRecord = -1
+
 	data, err := csvReader.ReadAll()
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	output_file, err := os.Create(fmt.Sprintf("./links/%s.txt", file[:len(file)-4]))
 	defer output_file.Close()
 	if err != nil {
@@ -97,16 +102,16 @@ func validatePath(dir string) error {
 		return_err := errors.New("empty command-line argument")
 		return return_err
 	}
-	var path_pattern string
+
+	var pattern string
 	if runtime.GOOS != "windows" {
-		path_pattern = "^([a-zA-Z0-9_+//]*)"
+		pattern = `^([a-zA-Z0-9_+//]*)`
 	} else {
-		path_pattern = "^([A-Z]:\\([a-zA-Z0-9_+]*\\)*)$"
+		pattern = `^([A-Z]:\\([a-zA-Z0-9_+]*\\)*)$`
 	}
-	matched, err := regexp.MatchString(path_pattern, dir)
-	if err != nil {
-		return err
-	} else if matched != true {
+
+	matched, err := regexp.MatchString(pattern, dir)
+	if err != nil || matched != true {
 		return_err := errors.New("not a valid path, try adding \\ at the end")
 		return return_err
 	}
@@ -126,26 +131,32 @@ func main() {
 	flag.Parse()
 	if !*json && !*link {
 		fmt.Println("\nSpecify either -link or -json flag\nExample spotifycsv -dir \"/foo/bar/\" -link\nIf you need help, use --help argument\nPress Enter to exit")
-		fmt.Scanln()
 		return
 	}
+
 	err := validatePath(*dir)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	files, err := os.ReadDir(*dir)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	for _, file := range files {
+
 		valid, err := validateFile(file.Name())
+
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		if valid {
 			if *json {
 				createJsonFile(*dir, file.Name())
 			}
+
 			if *link {
 				createSpotifyLinkFiles(*dir, file.Name())
 			}
@@ -153,6 +164,7 @@ func main() {
 			log.Printf("%s is not a csv file, skipping", file.Name())
 		}
 	}
+
 	fmt.Println("Everything was successful!\nPress enter to exit")
 	fmt.Scanln()
 }
