@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"runtime"
 )
 
 type Song struct {
@@ -96,9 +97,19 @@ func validatePath(dir string) error {
 		return_err := errors.New("empty command-line argument")
 		return return_err
 	}
-	pattern := `^([A-Z]:\\([a-zA-Z0-9_+]*\\)*)$`
-	matched, err := regexp.MatchString(pattern, dir)
-	if err != nil || matched != true {
+	var path_pattern string
+	if runtime.GOOS != "windows" {
+		path_pattern = "^([a-zA-Z0-9_+//]*)"
+	} else {
+		path_pattern = "^([A-Z]:\\([a-zA-Z0-9_+]*\\)*)$"
+	}
+	fmt.Println(path_pattern)
+	fmt.Println(dir)
+	matched, err := regexp.MatchString(path_pattern, dir)
+	fmt.Println(matched)
+	if err != nil {
+		return err
+	} else if matched != true {
 		return_err := errors.New("not a valid path, try adding \\ at the end")
 		return return_err
 	}
