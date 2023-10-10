@@ -6,7 +6,7 @@ if [[ -z "$package" ]]; then
   exit 1
 fi
 IFS='.' read -ra fields <<< $package
-package_name=${fields[0]}
+package_name="spotifycsv"
 
 platforms=("windows/amd64" "windows/386" "linux/amd64" "linux/arm64" "linux/386")
 
