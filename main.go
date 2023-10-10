@@ -10,6 +10,8 @@ import (
 	"os"
 	"regexp"
 	"runtime"
+	"sync"
+	"time"
 )
 
 type Song struct {
@@ -19,15 +21,38 @@ type Song struct {
 	SpotifyId  string `json:"spotfy_id"`
 }
 
-func createJsonFile(dir string, file string) {
-	err := os.Mkdir("json", 0750)
-	if err != nil && !os.IsExist(err) {
-		log.Fatal(err)
+type Worker struct {
+	FileName string
+	Playlist []Song
+}
+
+func gen(files []os.DirEntry, dir string, wg *sync.WaitGroup, done chan struct{}, chans ...chan Worker) {
+	defer wg.Done()
+	for _, file := range files {
+		valid, err := validateFile(file.Name())
+		if err != nil {
+			log.Fatal(err)
+		}
+		if valid {
+			var result Worker
+			playlist, err := createPlaylist(dir, file.Name())
+			result.FileName = file.Name()
+			result.Playlist = playlist
+			if err != nil {
+				log.Fatal(err)
+			}
+			for _, c := range chans {
+				c <- result
+			}
+		}
 	}
 
+}
+
+func createPlaylist(dir string, file string) ([]Song, error) {
 	f, err := os.Open(dir + file)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	csvReader := csv.NewReader(f)
@@ -35,7 +60,7 @@ func createJsonFile(dir string, file string) {
 
 	data, err := csvReader.ReadAll()
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	var song Song
@@ -49,52 +74,72 @@ func createJsonFile(dir string, file string) {
 		playlist = append(playlist, song)
 	}
 
-	jsonData, err := json.Marshal(playlist)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	jsonFile, err := os.Create(fmt.Sprintf("./json/%s.json", file[:len(file)-4]))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer jsonFile.Close()
-
-	jsonFile.Write(jsonData)
+	return playlist, err
 }
 
-func createSpotifyLinkFiles(dir string, file string) {
-	err := os.Mkdir("links", 0750)
-	if err != nil && !os.IsExist(err) {
-		log.Fatal(err)
-	}
+func createJsonFile(done chan struct{}) chan Worker {
+	out := make(chan Worker)
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case result := <-out:
+				err := os.Mkdir("json", 0750)
+				if err != nil && !os.IsExist(err) {
+					log.Fatal(err)
+				}
 
-	f, err := os.Open(dir + file)
-	if err != nil {
-		log.Fatal(err)
-	}
+				jsonData, err := json.Marshal(result.Playlist)
+				if err != nil {
+					log.Fatal(err)
+				}
 
-	csvReader := csv.NewReader(f)
-	csvReader.FieldsPerRecord = -1
+				jsonFile, err := os.Create(fmt.Sprintf("./json/%s.json", result.FileName[:len(result.FileName)-4]))
+				if err != nil {
+					log.Fatal(err)
+				}
+				defer jsonFile.Close()
 
-	data, err := csvReader.ReadAll()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	output_file, err := os.Create(fmt.Sprintf("./links/%s.txt", file[:len(file)-4]))
-	defer output_file.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for i := 1; i < len(data); i++ {
-		_, err := output_file.WriteString(fmt.Sprintf("https://open.spotify.com/track/%s\n", data[i][0]))
-		if err != nil {
-			log.Fatal(err)
+				jsonFile.Write(jsonData)
+			case <-done:
+				break
+			}
 		}
-	}
+	}()
+	return out
+}
 
+func createSpotifyLinkFiles(done chan struct{}) chan Worker {
+	out := make(chan Worker)
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case result := <-out:
+				err := os.Mkdir("links", 0750)
+				if err != nil && !os.IsExist(err) {
+					log.Fatal(err)
+				}
+
+				output_file, err := os.Create(fmt.Sprintf("./links/%s.txt", result.FileName[:len(result.FileName)-4]))
+				defer output_file.Close()
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				for _, song := range result.Playlist {
+					_, err := output_file.WriteString(fmt.Sprintf("https://open.spotify.com/track/%s\n", song.SpotifyId))
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+			case <-done:
+				break
+			}
+		}
+	}()
+
+	return out
 }
 
 func validatePath(dir string) error {
@@ -129,6 +174,10 @@ func main() {
 	json := flag.Bool("json", false, "Create JSON files with song info in more pretier format")
 	link := flag.Bool("link", false, "Create folder with .txt files containing links to all songs")
 	flag.Parse()
+
+	var wg sync.WaitGroup
+	done := make(chan struct{})
+
 	if !*json && !*link {
 		fmt.Println("\nSpecify either -link or -json flag\nExample spotifycsv -dir \"/foo/bar/\" -link\nIf you need help, use --help argument")
 		return
@@ -144,27 +193,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	for _, file := range files {
-
-		valid, err := validateFile(file.Name())
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if valid {
-			if *json {
-				createJsonFile(*dir, file.Name())
-			}
-
-			if *link {
-				createSpotifyLinkFiles(*dir, file.Name())
-			}
-		} else {
-			log.Printf("%s is not a csv file, skipping", file.Name())
-		}
+	start := time.Now()
+	var chans []chan Worker
+	if *json {
+		chans = append(chans, createJsonFile(done))
 	}
 
-	fmt.Println("Everything was successful!\nPress enter to exit")
+	if *link {
+		chans = append(chans, createSpotifyLinkFiles(done))
+	}
+
+	wg.Add(1)
+	go gen(files, *dir, &wg, done, chans...)
+
+	fmt.Println("Everything was successful!")
+	fmt.Printf("Program took %s\n", time.Since(start))
+	fmt.Println("Press enter to exit")
 	fmt.Scanln()
 }
