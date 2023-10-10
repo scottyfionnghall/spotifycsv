@@ -105,7 +105,7 @@ func validatePath(dir string) error {
 
 	var pattern string
 	if runtime.GOOS != "windows" {
-		pattern = `^([a-zA-Z0-9_+//]*)`
+		pattern = `^(\/[[:ascii:]]*\/)*$`
 	} else {
 		pattern = `^([A-Z]:\\([a-zA-Z0-9_+]*\\)*)$`
 	}
