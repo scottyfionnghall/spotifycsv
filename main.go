@@ -205,6 +205,7 @@ func main() {
 
 	wg.Add(1)
 	go gen(files, *dir, &wg, done, chans...)
+	wg.Wait()
 
 	fmt.Println("Everything was successful!")
 	fmt.Printf("Program took %s\n", time.Since(start))
