@@ -130,7 +130,7 @@ func main() {
 	link := flag.Bool("link", false, "Create folder with .txt files containing links to all songs")
 	flag.Parse()
 	if !*json && !*link {
-		fmt.Println("\nSpecify either -link or -json flag\nExample spotifycsv -dir \"/foo/bar/\" -link\nIf you need help, use --help argument\nPress Enter to exit")
+		fmt.Println("\nSpecify either -link or -json flag\nExample spotifycsv -dir \"/foo/bar/\" -link\nIf you need help, use --help argument")
 		return
 	}
 
